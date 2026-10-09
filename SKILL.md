@@ -59,11 +59,12 @@ description: 把本机固定端口服务注册为 Servy 长期服务，并在 Cl
 Servy 服务默认以 LocalSystem 运行，而 zcode Web UI 要「就是这台电脑上的 zcode」——
 必须让 SYSTEM 进程读到用户（datoo）的凭据、设置与数据。**三个 env 缺一不可**（2026-10-09 实测定罪）：
 
-| env | 作用 | 缺失症状 |
+| env / 手段 | 作用 | 缺失症状 |
 | --- | --- | --- |
 | `ZCODE_DATA_BASE_DIR=C:\Users\datoo` | paths.ts 数据根（credentials/tasks-index/db）优先级最高 | 弹「连接 Z.ai」账号墙 |
 | `ZCODE_CREDENTIAL_SECRET=zcode-credential-fallback:win32:C:\Users\datoo:datoo` | 凭据 AES-256-GCM 密钥；桌面端未设该 env 时按 `win32+homedir+username` 派生，SYSTEM 的 username 恒为 SYSTEM，密钥必不匹配→解密失败→oauth 判损坏清空 | 同上（墙），且换 DATA_BASE_DIR 也救不了 |
 | `ZCODE_DESKTOP_HOME_DIR=C:\Users\datoo` | settingService 独立解析家目录（不认 DATA_BASE_DIR） | setting.json 落 systemprofile，recentProjects 只剩 cwd 项目，侧栏只有 1 个 workspace/个位数任务 |
+| **agent 垫片** `ZCODE_AGENT_SERVER_ARGS_JSON=["-r","C:/stage/agent-homedir-shim.cjs","<官方zcode.cjs>","app-server","--stdio"]`（COMMAND=node） | 官方 agent bundle 内**会话库路径走 os.homedir() 且无任何 env 覆盖**（实测已装 bundle 0 处 ZCODE_SESSION_DB_PATH）→ SYSTEM 落 systemprofile 空库。垫片（node -r 预载）把 os.homedir→C:\Users\datoo、userInfo().username→datoo，会话库与凭据密钥派生整体对齐真实用户；不改官方文件、可逆 | 侧栏任务列表正常（走 tasks-index）但**点会话报 `fault.subscribe.sessionNotFound` / `Session is not active`**，composer 永不出现；修后冷会话 ~10s 打开（含加载提示），桌面进行中会话也可开（zcode 按轮次即时持久化） |
 
 坑位：
 - **Servy 9.9 把 `HOME`/`USERPROFILE`/`APPDATA`/`LOCALAPPDATA` 列为受保护变量，注入即静默丢弃**
