@@ -54,6 +54,28 @@ description: 把本机固定端口服务注册为 Servy 长期服务，并在 Cl
    - 保存 → toast「设置已成功保存」，**DNS 自动配置**，无需手动建记录。
 5. 改已有路由：点**主机名链接本身**直接进编辑页（行尾 ⋯ 菜单点击不可靠）。
 
+## 第二步半（zcode 类服务专属）：SYSTEM 服务读用户登录态的三变量
+
+Servy 服务默认以 LocalSystem 运行，而 zcode Web UI 要「就是这台电脑上的 zcode」——
+必须让 SYSTEM 进程读到用户（datoo）的凭据、设置与数据。**三个 env 缺一不可**（2026-10-09 实测定罪）：
+
+| env | 作用 | 缺失症状 |
+| --- | --- | --- |
+| `ZCODE_DATA_BASE_DIR=C:\Users\datoo` | paths.ts 数据根（credentials/tasks-index/db）优先级最高 | 弹「连接 Z.ai」账号墙 |
+| `ZCODE_CREDENTIAL_SECRET=zcode-credential-fallback:win32:C:\Users\datoo:datoo` | 凭据 AES-256-GCM 密钥；桌面端未设该 env 时按 `win32+homedir+username` 派生，SYSTEM 的 username 恒为 SYSTEM，密钥必不匹配→解密失败→oauth 判损坏清空 | 同上（墙），且换 DATA_BASE_DIR 也救不了 |
+| `ZCODE_DESKTOP_HOME_DIR=C:\Users\datoo` | settingService 独立解析家目录（不认 DATA_BASE_DIR） | setting.json 落 systemprofile，recentProjects 只剩 cwd 项目，侧栏只有 1 个 workspace/个位数任务 |
+
+坑位：
+- **Servy 9.9 把 `HOME`/`USERPROFILE`/`APPDATA`/`LOCALAPPDATA` 列为受保护变量，注入即静默丢弃**
+  （只在 `C:\ProgramData\Servy\logs\Servy.Service.log` 留一行 WARN）——不要试图用它们重定向。
+- 密钥值 `zcode-credential-fallback:win32:C:\Users\datoo:datoo` 即桌面端零配置派生串
+  （`node -e "const os=require('os');console.log('zcode-credential-fallback:'+os.platform()+':'+os.homedir()+':'+os.userInfo().username)"`
+  以该用户身份运行可得），强度等价桌面现状；长期方案是桌面与服务同设强随机值。
+- 全新浏览器 profile 首开会弹 Onboarding 引导（点击「跳过」即入主界面），旧 profile 无此现象；
+  onboarding 状态经服务写回用户 setting.json 后不再弹。
+- 改完服务定义必须 `servy-cli uninstall -n {服务名}` 再跑安装脚本——脚本里「已安装则跳过」会吞掉改动。
+
+
 ## 自动化操作浏览器的纪律（Computer Use）
 
 - CF 面板页 a11y 树会裁剪（400 元素）且窗口反复被最小化：**同一个工具调用单元内完成
